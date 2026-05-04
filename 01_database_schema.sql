@@ -1,3 +1,4 @@
+-- Файл проекта: Аналитика пассажирских перевозок. Логика «неизбежности учета»
 -- Создание таблицы автопарка
 CREATE TABLE vehicles (vehicle_id SERIAL PRIMARY KEY,
 		       model VARCHAR(50) NOT NULL,
