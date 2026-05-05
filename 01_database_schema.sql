@@ -18,6 +18,7 @@ CREATE TABLE trips (trip_id SERIAL PRIMARY KEY,
 		    driver_id INTEGER REFERENCES drivers(driver_id),
 		    trip_date DATE NOT NULL,
 		    distance_km DECIMAL(6,2),
-		    revenue DECIMAL(10,2), -- выручка за рейс
+		    revenue DECIMAL(10,2), -- выручка за рейс/билеты/контракты
 		    fuel_cost DECIMAL(10,2) -- затраты на топливо
 		   );
+-- (c) 2026 NaZaR-TruE. Спроектировано для транспортной аналитики.
