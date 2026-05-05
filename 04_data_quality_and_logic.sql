@@ -3,52 +3,45 @@
 Цель: Поиск технических ошибок и выявление «скрытых потерь» (бегемотов).
 */
 
--- 1. ДЕТЕКТОР "ПЕРЕЛИВОВ" И ФИЗИЧЕСКИХ ЛИМИТОВ
--- Ищем заправки, превышающие техническую емкость бака.
+-- 1. ДЕТЕКТОР АНОМАЛЬНЫХ ЗАТРАТ (Вместо перелива бака)
+-- Ищем рейсы, где затраты на топливо подозрительно высоки (например, более 5000 руб за рейс)
 SELECT 
-    f.trip_id, 
-    v.vehicle_name, 
-    f.fuel_liters,
-    v.tank_capacity as limit_liters,
-    'Внимание: Объем заправки превышает емкость бака' as alert_type
-FROM fuel_trips f
-JOIN vehicles v ON f.vehicle_id = v.vehicle_id
-WHERE f.fuel_liters > v.tank_capacity; 
+    t.trip_id, 
+    v.model, 
+    v.reg_number,
+    t.fuel_cost,
+    'Внимание: Затраты на ГСМ выше лимита' as alert_type
+FROM trips t
+JOIN vehicles v ON t.vehicle_id = v.vehicle_id
+WHERE t.fuel_cost > 5000; 
 
 
--- 2. ДЕТЕКТОР "БЕГЕМОТОВ" (Скрытые неисправности/Перерасход)
--- Ищем отклонение фактического расхода от нормы более чем на 15%.
--- Это выявляет забитые форсунки, свечи или "масложор".
+-- 2. ДЕТЕКТОР "БЕГЕМОТОВ" (Анализ через стоимость 100 км пути)
+-- Вычисляем стоимость ГСМ на 100 км. Если она резко выше нормы — это аномалия.
+-- Предположим, средняя стоимость 100 км пути — 1200 руб. Ищем отклонения.
 SELECT 
-    v.vehicle_name,
-    f.fuel_date,
-    v.consumption_rate as norm_rate,
-    ROUND((f.fuel_liters / f.distance_km) * 100, 2) as actual_rate,
-    ROUND(((f.fuel_liters / f.distance_km) * 100 - v.consumption_rate) / v.consumption_rate * 100, 1) as delta_percent
-FROM fuel_trips f
-JOIN vehicles v ON f.vehicle_id = v.vehicle_id
-WHERE f.distance_km > 0 
-  AND ((f.fuel_liters / f.distance_km) * 100 - v.consumption_rate) / v.consumption_rate * 100 > 15.0;
+    v.model,
+    v.reg_number,
+    t.trip_date,
+    ROUND((t.fuel_cost / t.distance_km) * 100, 2) as cost_per_100km
+FROM trips t
+JOIN vehicles v ON t.vehicle_id = v.vehicle_id
+WHERE t.distance_km > 0 
+  AND (t.fuel_cost / t.distance_km) * 100 > 1500; -- Порог аномалии в рублях
 
 
 -- 3. ПРОВЕРКА ЛОГИЧЕСКОЙ ЦЕЛОСТНОСТИ
--- Рейсы с пробегом, но без расхода топлива (сбои датчиков).
+-- Рейсы с пробегом, но с нулевыми затратами на ГСМ (ошибка учета или "левая" заправка)
 SELECT 
-    trip_id, vehicle_id, distance_km, fuel_liters
-FROM fuel_trips 
-WHERE distance_km > 0 AND fuel_liters <= 0;
+    trip_id, vehicle_id, distance_km, fuel_cost
+FROM trips 
+WHERE distance_km > 0 AND fuel_cost <= 0;
 
 
 -- 4. ДЕТЕКТОР ДУБЛЕЙ
--- Исключаем задвоение данных в финансовой отчетности.
+-- Поиск идентичных записей по машине и дате
 SELECT 
-    vehicle_id, fuel_date, distance_km, COUNT(*) as duplicate_count
-FROM fuel_trips
-GROUP BY vehicle_id, fuel_date, distance_km
+    vehicle_id, trip_date, distance_km, COUNT(*) as duplicate_count
+FROM trips
+GROUP BY vehicle_id, trip_date, distance_km
 HAVING COUNT(*) > 1;
-
-
--- 5. КОНТРОЛЬ МАСТЕР-ДАННЫХ (NULL check)
-SELECT COUNT(*) as records_with_errors
-FROM fuel_trips
-WHERE vehicle_id IS NULL OR fuel_date IS NULL OR fuel_liters IS NULL;
