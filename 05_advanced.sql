@@ -2,42 +2,42 @@
 ФАЙЛ 05: ПРОДВИНУТАЯ АНАЛИТИКА (WINDOW FUNCTIONS & KPI)
 Цель: Анализ динамики потребления и дисциплины маршрутов.
 */
-
--- 1. АНАЛИЗ ДИНАМИКИ РАСХОДА (LAG)
--- Сравниваем расход текущего рейса с предыдущим по той же машине.
+-- 1. АНАЛИЗ ДИНАМИКИ ЗАТРАТ НА ГСМ (LAG)
+-- Сравниваем стоимость заправки текущего рейса с предыдущим по той же машине.
 SELECT 
     vehicle_id,
     trip_date,
-    fuel_consumed,
-    LAG(fuel_consumed) OVER(PARTITION BY vehicle_id ORDER BY trip_date) as prev_fuel,
-    fuel_consumed - LAG(fuel_consumed) OVER(PARTITION BY vehicle_id ORDER BY trip_date) as delta_fuel
+    fuel_cost,
+    LAG(fuel_cost) OVER(PARTITION BY vehicle_id ORDER BY trip_date) as prev_trip_cost,
+    ROUND(fuel_cost - LAG(fuel_cost) OVER(PARTITION BY vehicle_id ORDER BY trip_date), 2) as delta_cost
 FROM trips;
 
 
 -- 2. РЕЙТИНГ ВОДИТЕЛЕЙ ПО ЭФФЕКТИВНОСТИ (DENSE_RANK)
--- Присваиваем места на основе среднего расхода на 100 км.
+-- Кто тратит меньше денег на 100 км пробега.
 SELECT 
     driver_id,
-    ROUND(AVG(fuel_consumed / distance_km * 100), 2) as avg_consumption,
-    DENSE_RANK() OVER(ORDER BY AVG(fuel_consumed / distance_km * 100) ASC) as rank_position
+    ROUND(AVG(fuel_cost / distance_km * 100), 2) as avg_cost_100km,
+    DENSE_RANK() OVER(ORDER BY AVG(fuel_cost / distance_km * 100) ASC) as rank_position
 FROM trips
 WHERE distance_km > 0
 GROUP BY driver_id;
 
 
--- 3. АНАЛИЗ ГРАФИКА ДВИЖЕНИЯ (Среднее время рейса)
--- Находим рейсы, которые длились дольше среднего по маршруту.
+-- 3. НАКОПИТЕЛЬНЫЙ ИТОГ ЗАТРАТ (SUM OVER)
+-- Считаем, как рос общий расход бюджета на ГСМ в хронологическом порядке.
 SELECT 
-    trip_id,
-    route_id,
-    EXTRACT(EPOCH FROM (actual_end_time - actual_start_time))/60 as duration_min,
-    AVG(EXTRACT(EPOCH FROM (actual_end_time - actual_start_time))/60) OVER(PARTITION BY route_id) as route_avg_min
+    trip_date,
+    fuel_cost,
+    SUM(fuel_cost) OVER(ORDER BY trip_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as running_total_cost
 FROM trips;
 
 
--- 4. ПОДЗАПРОС: ПОИСК АНОМАЛЬНО ДОРОГИХ РЕЙСОВ
--- Рейсы, затраты на ГСМ в которых выше среднего по всему автопарку.
+-- 4. ПОДЗАПРОС: РЕЙСЫ С ЗАТРАТАМИ ВЫШЕ СРЕДНЕГО
+-- Выделяем поездки, которые обошлись дороже, чем средний показатель по всему парку.
 SELECT 
-    trip_id, vehicle_id, fuel_consumed
+    trip_id, 
+    vehicle_id, 
+    fuel_cost
 FROM trips
-WHERE fuel_consumed > (SELECT AVG(fuel_consumed) FROM trips);
+WHERE fuel_cost > (SELECT AVG(fuel_cost) FROM trips);
