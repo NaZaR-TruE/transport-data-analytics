@@ -1,43 +1,43 @@
--- 1. Расчет разницы в литрах между текущей и предыдущей заправкой (Функция LAG)
--- Позволяет мгновенно увидеть резкие скачки потребления в рамках одной машины.
+/* 
+ФАЙЛ 05: ПРОДВИНУТАЯ АНАЛИТИКА (WINDOW FUNCTIONS & KPI)
+Цель: Анализ динамики потребления и дисциплины маршрутов.
+*/
+
+-- 1. АНАЛИЗ ДИНАМИКИ РАСХОДА (LAG)
+-- Сравниваем расход текущего рейса с предыдущим по той же машине.
 SELECT 
     vehicle_id,
-    fuel_date,
-    fuel_liters,
-    LAG(fuel_liters) OVER(PARTITION BY vehicle_id ORDER BY fuel_date) as previous_refill,
-    fuel_liters - LAG(fuel_liters) OVER(PARTITION BY vehicle_id ORDER BY fuel_date) as fuel_change
-FROM fuel_trips;
+    trip_date,
+    fuel_consumed,
+    LAG(fuel_consumed) OVER(PARTITION BY vehicle_id ORDER BY trip_date) as prev_fuel,
+    fuel_consumed - LAG(fuel_consumed) OVER(PARTITION BY vehicle_id ORDER BY trip_date) as delta_fuel
+FROM trips;
 
 
--- 2. Ранжирование водителей по экономичности (Функция DENSE_RANK)
--- Присваивает места: кто возит грузы с наименьшим удельным расходом.
+-- 2. РЕЙТИНГ ВОДИТЕЛЕЙ ПО ЭФФЕКТИВНОСТИ (DENSE_RANK)
+-- Присваиваем места на основе среднего расхода на 100 км.
 SELECT 
-    vehicle_id,
-    AVG(fuel_liters / distance_km * 100) as avg_consumption,
-    DENSE_RANK() OVER(ORDER BY AVG(fuel_liters / distance_km * 100) ASC) as efficiency_rating
-FROM fuel_trips
+    driver_id,
+    ROUND(AVG(fuel_consumed / distance_km * 100), 2) as avg_consumption,
+    DENSE_RANK() OVER(ORDER BY AVG(fuel_consumed / distance_km * 100) ASC) as rank_position
+FROM trips
 WHERE distance_km > 0
-GROUP BY vehicle_id;
+GROUP BY driver_id;
 
 
--- 3. Накопительный итог расхода ГСМ по месяцам (Функция SUM OVER)
--- Позволяет отслеживать исполнение бюджета подразделения в реальном времени.
-SELECT 
-    fuel_date,
-    fuel_liters,
-    SUM(fuel_liters) OVER(ORDER BY fuel_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as cumulative_total
-FROM fuel_trips;
-
-
--- 4. Использование ПОДЗАПРОСОВ (Subqueries)
--- Задача: Найти рейсы, расход в которых выше среднего расхода ПО ВСЕМУ автопарку.
+-- 3. АНАЛИЗ ГРАФИКА ДВИЖЕНИЯ (Среднее время рейса)
+-- Находим рейсы, которые длились дольше среднего по маршруту.
 SELECT 
     trip_id,
-    vehicle_id,
-    fuel_liters
-FROM fuel_trips
-WHERE fuel_liters > (
-    -- Внутренний подзапрос: вычисляет среднее значение
-    SELECT AVG(fuel_liters) 
-    FROM fuel_trips
-);
+    route_id,
+    EXTRACT(EPOCH FROM (actual_end_time - actual_start_time))/60 as duration_min,
+    AVG(EXTRACT(EPOCH FROM (actual_end_time - actual_start_time))/60) OVER(PARTITION BY route_id) as route_avg_min
+FROM trips;
+
+
+-- 4. ПОДЗАПРОС: ПОИСК АНОМАЛЬНО ДОРОГИХ РЕЙСОВ
+-- Рейсы, затраты на ГСМ в которых выше среднего по всему автопарку.
+SELECT 
+    trip_id, vehicle_id, fuel_consumed
+FROM trips
+WHERE fuel_consumed > (SELECT AVG(fuel_consumed) FROM trips);
