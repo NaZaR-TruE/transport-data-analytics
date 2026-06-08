@@ -6,7 +6,7 @@ SELECT
 FROM vehicles v
 JOIN trips t ON v.vehicle_id = t.vehicle_id
 GROUP BY v.reg_number, v.model;
-
+ 
 -- 2. Расчет чистой прибыли по каждому рейсу
 SELECT 
     trip_id, 
